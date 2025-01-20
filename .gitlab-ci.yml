@@ -1,0 +1,68 @@
+stages:
+    - install
+    - lint
+    - deploy
+
+install:
+    image: node:16.17.0
+    stage: install
+    artifacts:
+        untracked: true
+    cache:
+        key:
+            files:
+                - yarn.json
+        paths:
+            - node_modules/
+    only:
+        - dev
+        - main
+    script:
+        - yarn install
+
+lint:
+    image: node:16.17.0
+    stage: lint
+    dependencies:
+        - install
+    only:
+        - dev
+        - main
+    script:
+        - yarn lint --max-warnings=0
+
+deploy:development:
+    stage: deploy
+    image: docker:stable
+    environment:
+        name: development
+    only:
+        - dev
+    script:
+        - echo "Deploying application..."
+        - apk add --no-cache rsync openssh
+        - mkdir -p ~/.ssh
+        - echo "$SSH_PRIVATE_KEY" >> private.key
+        - chmod 600 private.key
+        - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+        - rsync -rav --delete -e "ssh -i private.key" src yarn.lock package.json .env.dev $URL:/telegram_bot/0xscanner
+        - ssh -i private.key $URL "cd /telegram_bot/0xscanner && mv .env.dev .env && yarn && pm2 restart 0xscanner-bot"
+        - echo "Application successfully deployed."
+
+deploy:production:
+    stage: deploy
+    image: docker:stable
+    environment:
+        name: production
+    only:
+        - main
+    script:
+        - echo "Deploying application..."
+        - apk add --no-cache rsync openssh
+        - mkdir -p ~/.ssh
+        - echo "$SSH_PRIVATE_KEY" >> private.key
+        - chmod 600 private.key
+        - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+        - rsync -rav --delete -e "ssh -i private.key" src yarn.lock package.json .env.production $URL:/telegram_bot/0xscanner
+        - ssh -i private.key $URL "cd /telegram_bot/0xscanner && mv .env.production .env && yarn && pm2 restart 0xscanner-bot"
+        - echo "Application successfully deployed."
